@@ -1,7 +1,8 @@
+
 def load_problem(problem_name):
-    num_comodities, num_nodes, num_arches, num_arches_mutual = 0, 0, 0, 0
     with open(problem_name, "r") as file:
-        firstLine = file.readline().split("	")
+        firstLine=file.readline()
+        firstLine =firstLine.split("	")
         num_nodes = int(firstLine[1])
         num_arches = int(firstLine[2])
         num_comodities = int(firstLine[3])
@@ -39,9 +40,9 @@ def load_problem(problem_name):
         for i in range(num_arches):
             if (len(values) == 0):
                 values = getValues(file)
-            start_node[i] = float(values[0])
+            start_node[i] = int(values[0])
             del values[0]
-            end_node[i] = float(values[0])
+            end_node[i] = int(values[0])
             del values[0]
 
         # Check for correct formulation con capacity
@@ -58,8 +59,15 @@ def load_problem(problem_name):
                         print("Error, multiple costs for edge ", i)
 
         for k in range(num_comodities):
-            print(k)
-            print(sum(supply[k,i]for i in range(1,num_nodes+1)))
+            summ=sum(supply[(k, i)] for i in range(1, num_nodes + 1))
+            print("SUMM ",k,"  ",summ)
+            if(summ!=0):
+                print(supply[(k, 1)])
+                supply[(k, 1)] = supply[(k, 1)] - summ
+                print(supply[(k, 1)])
+                new_summ = sum(supply[(k, i)] for i in range(1, num_nodes + 1))
+                print("FIXED SUMM", new_summ)
+
 
 
         return convert_problem(num_nodes, num_arches, num_comodities, arc_cost, single_comodity_capacity, supply,
@@ -77,11 +85,14 @@ def convert_problem(num_nodes, num_arches, num_comodities, arc_cost, single_como
 
     node_count = num_nodes
     commodites_count = num_comodities
+    for i in range(1, num_nodes + 1):
+        print(supply[(0, i)])
+
 
     for i in range(1,num_nodes+1):
         balances = []
         for j in range(num_comodities):
-            balances.append(supply[(j, i)])
+            balances.append(-supply[(j, i)])
         nodes_balances.append(balances)
 
     for i in range(num_arches):

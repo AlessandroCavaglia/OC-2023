@@ -73,9 +73,14 @@ def print_solution(model):
             print(edge[0], edge[1], k, "-", str(model.x[edge[0], edge[1], k].value))
 
 
+    '''for k in model.commodities:
+        print("--- ", k, "---")
+        for edge in model.edges:
+            print(edge[0], edge[1], model.edge_costs[edge],model.edge_capacities[edge])'''
+
+
 if __name__ == '__main__':
-    (node_count, commodites_count, nodes_balances, edges, edge_costs, edge_capacities) = fileReading.load_problem(
-        "datasets/cinca2.dat")
+    (node_count, commodites_count, nodes_balances, edges, edge_costs, edge_capacities) = fileReading.load_problem("datasets/minsil19.dat")
     '''
     nodes_balances=[[0 for j in range(COMMODITY_COUNT)] for i in range(NODE_COUNT)]
     nodes_balances[0][0]=-1
