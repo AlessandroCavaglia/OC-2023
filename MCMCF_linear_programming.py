@@ -1,6 +1,9 @@
+import os
+from datetime import datetime
+
 from pyomo.environ import *
 import pyomo.environ as pyo
-import fileReading
+import fileReading_PPNR
 
 '''
 Node balances = [[value for each comodity] for each node]
@@ -11,7 +14,7 @@ Edge capacities = dictionary, edge_capacities[[i,j]]=val
 '''
 
 
-def linear_programming_MCMCF(nodes_balances, edges, edge_costs, edge_capacities, nodes, commodities):
+def linear_programming_MCMCF(nodes, edges, commodities, arc_cost, single_comodity_capacity, supply,mutual_capacities, start_nodes, end_nodes):
     #print(nodes_balances)
     #print(edge_costs)
     #print(edge_capacities)
@@ -19,50 +22,50 @@ def linear_programming_MCMCF(nodes_balances, edges, edge_costs, edge_capacities,
     # Parametri
     model = ConcreteModel()
     model.commodities = commodities
-    model.nodes_balances = nodes_balances
+    model.nodes_balances = supply
     model.edges = edges
-    model.edge_costs = edge_costs
-    model.edge_capacities = edge_capacities
-    model.i = set([e[0] for e in edges])
-    model.j = set([e[1] for e in edges])
-
-    print(model.i)
-    print(model.j)
-
+    model.nodes = nodes
+    model.edge_costs = arc_cost
+    model.start_nodes=start_nodes
+    model.end_nodes=end_nodes
+    model.edge_capacities = single_comodity_capacity
+    model.mutual_capacities=mutual_capacities
 
     # Variabile
-    model.x = Var(model.i, model.j, commodities, within=pyo.PositiveReals)
+    model.x = Var(model.edges, model.commodities, within=pyo.PositiveReals)
 
     # Funzione obiettivo
     def obj_rule(model):
-        return (sum(model.x[i, j, k] for i in model.i for j in model.j for k in commodities))
+        return (sum(model.x[edge, k]*model.edge_costs[(k,edge)] for edge in model.edges for k in commodities))
 
     model.obj = Objective(expr=obj_rule(model), sense=minimize)
 
     # Vincoli
     model.balances_constraint = ConstraintList()
-    for k in commodities:
-        for n in nodes:
+    for k in model.commodities:
+        for n in model.nodes:
             entering_edges = []
             exiting_edges = []
             for edge in model.edges:
-                if edge[0] == n:
+                if start_nodes[edge] == n:
                     exiting_edges.append(edge)
-                if edge[1] == n:
+                if end_nodes[edge] == n:
                     entering_edges.append(edge)
-
             model.balances_constraint.add(
-                (sum(model.x[arch[0], arch[1], k] for arch in entering_edges) - sum(
-                    model.x[arch[0], arch[1], k] for arch in exiting_edges)) == (nodes_balances[n][k]))
+                (sum(model.x[edge, k] for edge in entering_edges) - sum(
+                    model.x[edge, k] for edge in exiting_edges)) == model.nodes_balances[(k, n)])
 
     model.bundle_constraint = ConstraintList()
     for edge in edges:
         model.balances_constraint.add(
-            sum(model.x[edge[0], edge[1], k] for k in commodities) <= model.edge_capacities[edge]
+            sum(model.x[edge, k] for k in commodities) <= model.mutual_capacities[edge]
         )
 
     opt = pyo.SolverFactory('cplex')
-    opt.solve(model)
+    opt.options['lpmethod'] = 1
+    opt.options['preprocessing presolve'] ='n'
+    path = os.path.join('log', str(datetime.today().strftime('Resolution_%d-%m-%y_%H-%M-%S.log')))
+    opt.solve(model, logfile=path)
     print_solution(model)
 
 
@@ -70,17 +73,32 @@ def print_solution(model):
     for k in model.commodities:
         print("--- ", k, "---")
         for edge in model.edges:
-            print(edge[0], edge[1], k, "-", str(model.x[edge[0], edge[1], k].value))
+            print(model.start_nodes[edge], model.end_nodes[edge], k, "-", str(model.x[edge, k].value))
 
+    for edge in model.edges:
+        summ = sum(model.x[edge, k].value for k in model.commodities)
+        difference =summ - model.mutual_capacities[edge]
+        if (difference > 0.00001):
+            print("UNFEASABLE EDGE: ", edge, " VALUE ", summ - model.edge_capacities[0,edge])
 
-    '''for k in model.commodities:
-        print("--- ", k, "---")
-        for edge in model.edges:
-            print(edge[0], edge[1], model.edge_costs[edge],model.edge_capacities[edge])'''
+    for k in model.commodities:
+        for n in model.nodes:
+            entering_edges = []
+            exiting_edges = []
+            for edge in model.edges:
+                if start_nodes[edge] == n:
+                    exiting_edges.append(edge)
+                if end_nodes[edge] == n:
+                    entering_edges.append(edge)
+            difference = (sum(model.x[edge, k].value for edge in entering_edges) - sum(
+                model.x[edge, k].value for edge in exiting_edges)) - model.nodes_balances[(k, n)]
+            if (abs(difference) > 0.00001):
+                print("BALANCES NOT HANDLED CORRECTLY FOR NODE ",n,"AND COMMODITY ",k," WITH ERROR OF: ",abs(difference))
+
 
 
 if __name__ == '__main__':
-    (node_count, commodites_count, nodes_balances, edges, edge_costs, edge_capacities) = fileReading.load_problem("datasets/minsil19.dat")
+    (num_nodes, num_arches, num_comodities, arc_cost, single_comodity_capacity, supply,mutual_capacities, start_nodes, end_nodes) = fileReading_PPNR.load_problem("datasets/minsil7.dat")
     '''
     nodes_balances=[[0 for j in range(COMMODITY_COUNT)] for i in range(NODE_COUNT)]
     nodes_balances[0][0]=-1
@@ -96,4 +114,4 @@ if __name__ == '__main__':
     edge_capacities=dict()
     for edge in edges:
         edge_capacities[edge]=1'''
-    linear_programming_MCMCF(nodes_balances,edges,edge_costs,edge_capacities,range(1,node_count+1),range(commodites_count))
+    linear_programming_MCMCF([node for node in range(1,num_nodes+1)], [arch for arch in range(num_arches)], [commodity for commodity in range(num_comodities)], arc_cost, single_comodity_capacity, supply,mutual_capacities, start_nodes, end_nodes)
